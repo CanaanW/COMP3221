@@ -36,8 +36,6 @@ int main( int argc, char **argv )
 	MPI_Comm_size( MPI_COMM_WORLD, &numProcs );
 	MPI_Comm_rank( MPI_COMM_WORLD, &rank     );
 
-	printf("Process %d of %d.\n",rank,numProcs);
-
 	// Read in the image file to rank 0.
 	int *image = NULL, maxValue, pixelsPerProc, dataSize;
 	if( rank==0 )
@@ -56,33 +54,64 @@ int main( int argc, char **argv )
 
 		printf( "Rank 0: Read in PGM image array of size %d (%d per process), with max value %d.\n", dataSize, pixelsPerProc, maxValue );
 	}
-	
+
 	// Allocate memory for the final histogram on rank 0.
 	int *combinedHist = NULL;
+	int *local_image = NULL;
  	if( rank==0 )
  	{
- 		combinedHist = (int*) malloc( (maxValue+1)*sizeof(int) );					// Note 'maxValue+1', as range is 0 to maxValue inclusive.
+ 		combinedHist = (int*) malloc( (maxValue+1)*sizeof(int) );				// Note 'maxValue+1', as range is 0 to maxValue inclusive.
+		localHist = (int*) malloc((maxValue+1)*sizeof(int));
+		local_image = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+
  		if( !combinedHist ) return allocateFail( "global histogram", rank );
  		
- 		for( i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;							// Clear the histogram to zeroes.
+ 		for(i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;						// Clear the histogram to zeroes.
+
+		for(int p=1; p<numProcs; p++){
+			MPI_Send(&image[p*pixelsPerProc], pixelsPerProc, MPI_INTEGER, p, 0, MPI_COMM_WORLD);
+		}
  	}
+	else{
+		MPI_Recv(local_image, pixelsPerProc, MPI_INTEGER, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	}
 
 	// Start the timing.
 	double startTime = MPI_Wtime();
-
-
 
 	//
 	// Your parallel code goes here. Feel free to change anything else in this file,
 	// EXCEPT calls to the routines in cwk2_extra.h which MUST be called as provided.
 	//
-	if (rank > 0){
-		for( i=0; i<maxValue+1; i++ ){
-			printf("%i",image[i]);
+	if (rank==1){
+		for(int i=0; i<pixelsPerProc; i++ ){
+			for(int j=0; j<=maxValue; j++){
+				if(image[i]==j){
+					combinedHist[j] += 1;
+				}
+			}
 		}
 	}
-	// printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
+	else{
+		int *localHist = NULL;
+		for(int i=0; i<pixelsPerProc; i++ ){
+			for(int j=0; j<=maxValue; j++){
+				if(local_image[i]==j){
+					combinedHist[j] += 1;
+				}
+			}
+		}
+	}
 
+	if (rank==0){
+		for(p=1; p<numProcs; p++){
+			MPI_Recv(
+				&
+			)
+		}
+	}
+	
+	// printf("%d, %d\n",dataSize,pixelsPerProc);
 
 	//
 	// Outputs the time taken, and checks the histogram against the serial calculation. Only rank 0 involved.
@@ -104,10 +133,8 @@ int main( int argc, char **argv )
 		// Display the histgram.
 		for( i=0; i<maxValue+1; i++ )
 			printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
-
 		free( checkHist );
 	}
-	
 	
 	//
 	// Clear up and quit.
