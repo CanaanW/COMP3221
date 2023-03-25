@@ -23,7 +23,6 @@
 // as this file will be replaced with a different version for assessment.
 #include "cwk2_extra.h"
 
-
 //
 // Main
 //
@@ -67,6 +66,16 @@ int main( int argc, char **argv )
 		if( !combinedHist ) return allocateFail( "global histogram", rank );
 		for(i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;                        // Clear the histogram to zeroes.
 	}
+	MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&maxValue, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+	localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+	if( !localImage ) return allocateFail( "local image", rank );
+	// for (int i=0; i<pixelsPerProc+1; i++) localImage[i] = 0;
+
+	localHist = (int*) malloc((maxValue+1)*sizeof(int));
+	if( !localHist ) return allocateFail( "local histogram", rank );
+	for (int i=0; i<maxValue+1; i++) localHist[i] = 0;
 	 
 	// MPI_Recv(local_image, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
@@ -79,40 +88,45 @@ int main( int argc, char **argv )
 	//
 
 	if (numProcs && ((numProcs&(numProcs-1))==0)){
-		int lev=1;
+		int lev = 1;
+		int p = 1;
 		while (1<<lev<=numProcs)lev++;
-		printf("%i",lev);
-		for (int i = 0; i<lev; i++){
-			for (int j=i; j<lev-1; j++){
-				MPI_Send(&image[i*pixelsPerProc], pixelsPerProc,MPI_INT, (1<<j)+i, i, MPI_COMM_WORLD);
+		// printf("lev = %i\n",lev);
+		
+		for (int i = 0; i<(lev-1); i++){
+			for (int j = 0; j<(1<<i); j++){
+				// printf("Level: %i - sending from rank: %i to rank: %i (2^i=%i)\n", i, j, p,(1<<i));
+
+				if (rank == j) {
+					printf("Level: %i - sending from rank: %i to rank: %i (2^i=%i)\n", i, j, p,(1<<i));
+					// printf("Sending");
+					// MPI_Send(&image[i*pixelsPerProc], pixelsPerProc, MPI_INT, p, 0, MPI_COMM_WORLD);
+				}
+				p++;
+
+				if (rank == p){ 
+					// printf("Rank: %i is receiving from rank: %i\n",p,j);
+					// MPI_Recv(localImage, pixelsPerProc, MPI_INT, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				}
 			}
 		}
-		for (int i = 1; i<numProcs;i++){
-			MPI_Recv(localImage, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		}
-		localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
-		if( !localImage ) return allocateFail( "local image", rank );
-
-		localHist = (int*) malloc((maxValue+1)*sizeof(int));
-		if( !localHist ) return allocateFail( "local histogram", rank );
-		for (int i=0; i<maxValue+1; i++) localHist[i] = 0;
 	}
 	else{
-		MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
-		MPI_Bcast(&maxValue, 1, MPI_INT, 0, MPI_COMM_WORLD);
+		// MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
+		// MPI_Bcast(&maxValue, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-		localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
-		if( !localImage ) return allocateFail( "local image", rank );
+		// localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+		// if( !localImage ) return allocateFail( "local image", rank );
 
-		localHist = (int*) malloc((maxValue+1)*sizeof(int));
-		if( !localHist ) return allocateFail( "local histogram", rank );
-		for (int i=0; i<maxValue+1; i++) localHist[i] = 0;	
+		// localHist = (int*) malloc((maxValue+1)*sizeof(int));
+		// if( !localHist ) return allocateFail( "local histogram", rank );
+		// for (int i=0; i<maxValue+1; i++) localHist[i] = 0;	
 		
 		MPI_Scatter(image, pixelsPerProc, MPI_INT, localImage, pixelsPerProc, MPI_INT, 0, MPI_COMM_WORLD);
 	}
 
 	for(int i=0; i<pixelsPerProc; i++ ){
-		localHist[localImage[i]]++;
+		if(localImage[i]>=0) localHist[localImage[i]]++;
 	}
 	MPI_Reduce(localHist, combinedHist, maxValue+1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 	free(localHist);
@@ -136,11 +150,11 @@ int main( int argc, char **argv )
 			if( image[i]>=0 ) checkHist[ image[i] ]++;
 		
 		// Display the histgram.
-		for( i=0; i<maxValue+1; i++ ){
-			printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
-			// if (combinedHist[i] != checkHist[i])
-			// 	printf("UNSUCCESSFUL: %i != %i\n",combinedHist[i], checkHist[i]);
-		}
+		// for( i=0; i<maxValue+1; i++ ){
+		// 	printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
+		// 	if (combinedHist[i] != checkHist[i])
+		// 		printf("UNSUCCESSFUL: %i != %i\n",combinedHist[i], checkHist[i]);
+		// }
 		free( checkHist );
 	}
 	
