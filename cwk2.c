@@ -66,15 +66,7 @@ int main( int argc, char **argv )
 		combinedHist = (int*) malloc( (maxValue+1)*sizeof(int) );				// Note 'maxValue+1', as range is 0 to maxValue inclusive.
 		if( !combinedHist ) return allocateFail( "global histogram", rank );
 		for(i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;                        // Clear the histogram to zeroes.
-
-			
 	}
-	localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
-	if( !localImage ) return allocateFail( "local image", rank );
-
-	localHist = (int*) malloc((maxValue+1)*sizeof(int));
-	if( !localHist ) return allocateFail( "local histogram", rank );
-	for (int i=0; i<255; i++) localHist[i] = 0;	
 	 
 	// MPI_Recv(local_image, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
@@ -109,16 +101,23 @@ int main( int argc, char **argv )
 	else{
 		MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
 		MPI_Bcast(&maxValue, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+		localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+		if( !localImage ) return allocateFail( "local image", rank );
+
+		localHist = (int*) malloc((maxValue+1)*sizeof(int));
+		if( !localHist ) return allocateFail( "local histogram", rank );
+		for (int i=0; i<maxValue+1; i++) localHist[i] = 0;	
 		
 		MPI_Scatter(image, pixelsPerProc, MPI_INT, localImage, pixelsPerProc, MPI_INT, 0, MPI_COMM_WORLD);
 	}
 
-	// for(int i=1; i<pixelsPerProc; i++ ){
-	// 	localHist[localImage[i]]++;
-	// }
-	// MPI_Reduce(localHist, combinedHist, maxValue+1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-	// free(localHist);
-	// free(localImage);
+	for(int i=0; i<pixelsPerProc; i++ ){
+		localHist[localImage[i]]++;
+	}
+	MPI_Reduce(localHist, combinedHist, maxValue+1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+	free(localHist);
+	free(localImage);
 	
 	//
 	// Outputs the time taken, and checks the histogram against the serial calculation. Only rank 0 involved.
@@ -138,8 +137,11 @@ int main( int argc, char **argv )
 			if( image[i]>=0 ) checkHist[ image[i] ]++;
 		
 		// Display the histgram.
-		for( i=0; i<maxValue+1; i++ )
+		for( i=0; i<maxValue+1; i++ ){
 			printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
+			if (combinedHist[i] != checkHist[i])
+				printf("UNSUCCESSFUL: %i != %i\n",combinedHist[i], checkHist[i]);
+		}
 		free( checkHist );
 	}
 	
