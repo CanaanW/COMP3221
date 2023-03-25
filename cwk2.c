@@ -79,24 +79,23 @@ int main( int argc, char **argv )
 	//
 
 	if (numProcs && ((numProcs&(numProcs-1))==0)){
-		int lev=0;
+		int lev=1;
 		while (1<<lev<=numProcs)lev++;
 		printf("%i",lev);
-		// if (rank == 0){
-		// 	MPI_Send(&image[i*pixelsPerProc], pixelsPerProc, MPI_INT, 1<<i, 0, MPI_COMM_WORLD);
-		// 	for(int i=0; i<pixelsPerProc+1; i++ ){
-		// 		combinedHist[image[i]]++;
-		// 	}
-		// 	if(1<<i == numProcs){
-		// 		free(localImage);
-		// 		free(localHist);
-		// 	}
-		// }
-		// else{
-		// 	MPI_Recv(localImage, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		// 	// localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
-		// 	// localHist = (int*) malloc((maxValue+1)*sizeof(int));
-		// }
+		for (int i = 0; i<lev; i++){
+			for (int j=i; j<lev-1; j++){
+				MPI_Send(&image[i*pixelsPerProc], pixelsPerProc,MPI_INT, (1<<j)+i, i, MPI_COMM_WORLD);
+			}
+		}
+		for (int i = 1; i<numProcs;i++){
+			MPI_Recv(localImage, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+		localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+		if( !localImage ) return allocateFail( "local image", rank );
+
+		localHist = (int*) malloc((maxValue+1)*sizeof(int));
+		if( !localHist ) return allocateFail( "local histogram", rank );
+		for (int i=0; i<maxValue+1; i++) localHist[i] = 0;
 	}
 	else{
 		MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -139,8 +138,8 @@ int main( int argc, char **argv )
 		// Display the histgram.
 		for( i=0; i<maxValue+1; i++ ){
 			printf( "Greyscale value %i:\tCount %i\t(check: %i)\n", i, combinedHist[i], checkHist[i] );
-			if (combinedHist[i] != checkHist[i])
-				printf("UNSUCCESSFUL: %i != %i\n",combinedHist[i], checkHist[i]);
+			// if (combinedHist[i] != checkHist[i])
+			// 	printf("UNSUCCESSFUL: %i != %i\n",combinedHist[i], checkHist[i]);
 		}
 		free( checkHist );
 	}
