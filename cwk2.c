@@ -9,7 +9,7 @@
 // or use the provided makefile. "-Wall"  turns on all warnings (optional but recommended).
 // You can also add "-stc=c99" if you like.
 //
-
+ 
 
 //
 // Includes
@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <math.h>
 
 // Some extra routines for this coursework. DO NOT MODIFY OR REPLACE THESE ROUTINES,
 // as this file will be replaced with a different version for assessment.
@@ -36,10 +37,11 @@ int main( int argc, char **argv )
 	MPI_Comm_size( MPI_COMM_WORLD, &numProcs );
 	MPI_Comm_rank( MPI_COMM_WORLD, &rank     );
 
+	int *image = NULL, maxValue, dataSize;
+	int pixelsPerProc;
+
 	// Read in the image file to rank 0.
-	int *image = NULL, maxValue, pixelsPerProc, dataSize;
-	if( rank==0 )
-	{
+	if (rank == 0){
 		// Read in the file and extract the maximum grey scale value and the data size (including padding bytes).
 		// Defined in cwk2_extras.h; do not change, although feel free to inspect.
 		image = readImage( "image.pgm", &maxValue, &dataSize, numProcs );
@@ -52,36 +54,29 @@ int main( int argc, char **argv )
 		// The image size has already been rounded up to a multiple of numProcs by "readImage()".
 		pixelsPerProc = dataSize / numProcs;
 
-		printf( "Rank 0: Read in PGM image array of size %d (%d per process), with max value %d.\n", dataSize, pixelsPerProc, maxValue );
-		printf("Yourgettingmemadfam");
+		printf("Rank 0: Read in PGM image array of size %d (%d per process), with max value %d.\n", dataSize, pixelsPerProc, maxValue );
 	}
 
+	
 	// Allocate memory for the final histogram on rank 0.
 	int *combinedHist = NULL;
-	int *local_image = NULL;
 	int *localHist = NULL;
-	printf("HELLO");
- 	if( rank==0 )
- 	{
-		printf("Hello");
- 		combinedHist = (int*) malloc( (maxValue+1)*sizeof(int) );				// Note 'maxValue+1', as range is 0 to maxValue inclusive.
- 		if( !combinedHist ) return allocateFail( "global histogram", rank );
- 		
- 		for(i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;						// Clear the histogram to zeroes.
+	int *localImage = NULL;
+	if (rank==0){		
+		combinedHist = (int*) malloc( (maxValue+1)*sizeof(int) );				// Note 'maxValue+1', as range is 0 to maxValue inclusive.
+		if( !combinedHist ) return allocateFail( "global histogram", rank );
+		for(i=0; i<maxValue+1; i++ ) combinedHist[i] = 0;                        // Clear the histogram to zeroes.
 
-		printf("Are you dumb");
-		for(int p=1; p<numProcs; p++){
-			printf("Trying to send local_image");
-			MPI_Send(&image[p*pixelsPerProc], pixelsPerProc, MPI_INTEGER, p, 0, MPI_COMM_WORLD);
-			printf("Sending local_images to all process");
-		}
- 	}
-	else{
-		local_image = (int*) malloc((pixelsPerProc+1)*sizeof(int));
-		localHist = (int*) malloc((maxValue+1)*sizeof(int));
-		MPI_Recv(local_image, pixelsPerProc, MPI_INTEGER, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf("Received local_image");
+			
 	}
+	localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+	if( !localImage ) return allocateFail( "local image", rank );
+
+	localHist = (int*) malloc((maxValue+1)*sizeof(int));
+	if( !localHist ) return allocateFail( "local histogram", rank );
+	for (int i=0; i<255; i++) localHist[i] = 0;	
+	 
+	// MPI_Recv(local_image, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 	// Start the timing.
 	double startTime = MPI_Wtime();
@@ -90,42 +85,47 @@ int main( int argc, char **argv )
 	// Your parallel code goes here. Feel free to change anything else in this file,
 	// EXCEPT calls to the routines in cwk2_extra.h which MUST be called as provided.
 	//
-	if (rank==0){
-		for(int i=0; i<pixelsPerProc; i++ ){
-			for(int j=0; j<=maxValue; j++){
-				if(image[i]==j){
-					combinedHist[j] += 1;
-				}
-			}
-		}
+
+	if (numProcs && ((numProcs&(numProcs-1))==0)){
+		int lev=0;
+		while (1<<lev<=numProcs)lev++;
+		printf("%i",lev);
+		// if (rank == 0){
+		// 	MPI_Send(&image[i*pixelsPerProc], pixelsPerProc, MPI_INT, 1<<i, 0, MPI_COMM_WORLD);
+		// 	for(int i=0; i<pixelsPerProc+1; i++ ){
+		// 		combinedHist[image[i]]++;
+		// 	}
+		// 	if(1<<i == numProcs){
+		// 		free(localImage);
+		// 		free(localHist);
+		// 	}
+		// }
+		// else{
+		// 	MPI_Recv(localImage, pixelsPerProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		// 	// localImage = (int*) malloc((pixelsPerProc+1)*sizeof(int));
+		// 	// localHist = (int*) malloc((maxValue+1)*sizeof(int));
+		// }
 	}
 	else{
-		for(int i=0; i<pixelsPerProc; i++ ){
-			for(int j=0; j<=maxValue; j++){
-				if(local_image[i]==j){
-					localHist[j] += 1;
-				}
-			}
-		}
+		MPI_Bcast(&pixelsPerProc, 1, MPI_INT, 0, MPI_COMM_WORLD);
+		MPI_Bcast(&maxValue, 1, MPI_INT, 0, MPI_COMM_WORLD);
+		
+		MPI_Scatter(image, pixelsPerProc, MPI_INT, localImage, pixelsPerProc, MPI_INT, 0, MPI_COMM_WORLD);
 	}
 
-	if (rank==0){
-		for(int p=1; p<numProcs; p++){
-			MPI_Recv(&combinedHist[p*pixelsPerProc], pixelsPerProc, MPI_INTEGER, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			printf("Received all localHists");
-		}
-	}
-	else{
-		MPI_Send(localHist, pixelsPerProc, MPI_INTEGER, 0, 0, MPI_COMM_WORLD);
-		printf("Sending all localHist");
-	}
-
+	// for(int i=1; i<pixelsPerProc; i++ ){
+	// 	localHist[localImage[i]]++;
+	// }
+	// MPI_Reduce(localHist, combinedHist, maxValue+1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+	// free(localHist);
+	// free(localImage);
+	
 	//
 	// Outputs the time taken, and checks the histogram against the serial calculation. Only rank 0 involved.
 	//
 	if( rank==0 )
 	{
-		 // Time for the parallel computation.
+		// Time for the parallel computation.
 		printf( "Parallel calculation took a total time %g s.\n", MPI_Wtime() - startTime );
 
 		// Allocate memory for the check histogram, and then initialise it to zero.
