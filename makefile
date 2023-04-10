@@ -1,13 +1,25 @@
 #
-# Very simple makefile for coursework 2. You are free to update this if you
-# wish to add files etc., but ensure (a) the executable name is unchanged,
-# (b) it still works on a school machine, and (c) the file cwk2_extra.h is
-# included and unaltered.
+# Simple makefile for coursework 3.
+# Should work on both a School machine once CUDA has been loaded (e.g. moodule avail cuda/...),
+# and also on a Mac. Note however that all submissions will be assessed on a School machine.
 #
-EXE = cwk2
-CC = mpicc
-CCFLAGS = -Wall -lm -std=c99
+EXE = cwk3
+OS = $(shell uname)
+
+ifeq ($(OS), Linux)
+	MSG = On a School machine, first load the nvcc compiler using module load cuda
+	CC = nvcc -lOpenCL
+endif
+
+ifeq ($(OS), Darwin)
+	MSG = Mac uses clang with deprecation warnings silenced. May need to change compiler and options depending on your set-up.
+	CC = clang -framework OpenCL -DCL_SILENCE_DEPRECATION
+endif
 
 all:
-	$(CC) $(CCFLAGS) -o $(EXE) cwk2.c
+	@echo $(MSG)
+	@echo
+	$(CC) -o $(EXE) cwk3.c
+
+
 
