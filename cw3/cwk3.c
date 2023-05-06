@@ -63,16 +63,74 @@ int main( int argc, char **argv )
 
 	// Initialise the solution vector to zero.
 	int i;
-	for( i=0; i<N; i++ ) hostSolution[i] = 0.0f;
+	for( i=0; i<N; i++ ) {hostSolution[i] = 0.0f;}
+
+    cl_mem device_a = clCreateBuffer(
+        context,
+        CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+        N*N * sizeof(float),
+        hostMatrix,
+        &status
+    );
+
+    cl_mem device_b = clCreateBuffer(
+        context,
+        CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+        N*sizeof(float),
+        hostVector,
+        &status
+    );
+
+    cl_mem device_c = clCreateBuffer(
+        context,
+        CL_MEM_WRITE_ONLY,
+        N*sizeof(float),
+        NULL,
+        &status
+    );
 
     //
     // Perform the calculation on the GPU.
     //
 
-    int row, col;
-        for( row=0; row<N; row++ )
-            for( col=0; col<N; col++ )
-                y[row] += M[row*N+col] * x[col];
+    cl_kernel kernel = compileKernelFromFile(
+        "cwk3.cl", "matrixMultiply", context, device
+    );
+
+    status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &device_a);
+    status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &device_b);
+    status = clSetKernelArg(kernel, 2, sizeof(cl_mem), &device_c);
+    status = clSetKernelArg( kernel, 3, sizeof(int), &N);
+
+    //status = clSetKernelArg(kernel, 3, sizeof(int), &N);
+
+    size_t indexSpaceSize[1], workGroupSize[1];
+    indexSpaceSize[0] = N;
+    // workGroupSize[0] = 256;
+
+    status = clEnqueueNDRangeKernel (
+        queue, kernel, 1,
+        NULL, indexSpaceSize, NULL,
+        0, NULL, NULL
+    );
+
+    if( status != CL_SUCCESS ){
+		printf( "Failure enqueuing kernel: Error %d.\n", status );
+		return EXIT_FAILURE;
+	}
+
+	status = clEnqueueReadBuffer( 
+        queue, device_c, CL_TRUE, 
+        0, N*sizeof(float), hostSolution,
+        0, NULL, NULL 
+    );
+
+	if( status != CL_SUCCESS )
+	{
+		printf( "Could not copy device data to host: Error %d.\n", status );
+		return EXIT_FAILURE;
+	}    
+
 	// Your solution should mainly go here and in the associated .cl file,
 	// but you are free to make changes elsewhere in this code.
 
@@ -85,13 +143,18 @@ int main( int argc, char **argv )
     //
     // Release all resources.
     //
-    clReleaseCommandQueue( queue   );
-    clReleaseContext     ( context );
-
+    
     free( hostMatrix   );
 	free( hostVector   );
 	free( hostSolution );
+
+    clReleaseKernel      ( kernel  );
+    clReleaseCommandQueue( queue   );
+    clReleaseContext     ( context );
+
+    clReleaseMemObject(device_a);
+    clReleaseMemObject(device_b);
+    clReleaseMemObject(device_c);
  
     return EXIT_SUCCESS;
 }
-
